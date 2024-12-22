@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+selenium
+webdriver_manager
+python-dotenv
+bs4
+pandas
+pyodbc
+apscheduler
+xlrd==2.0.1
+openpyxl
+hypercorn
