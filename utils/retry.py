@@ -1,7 +1,7 @@
 import time
 from functools import wraps
 
-def retry(max_retries=5, delay=2, exceptions=(Exception,)):
+def retry(max_retries, delay, exceptions=(Exception,)):
     """
     Decorador para reintentar la ejecución de una función en caso de error.
     :param max_retries: Número máximo de reintentos.

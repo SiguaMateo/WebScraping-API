@@ -10,23 +10,34 @@ try:
     import time
     import os
     import pandas as pd
-    import utils.mail as send_email
-    import utils.data_base as util_data_base
-    import data_base
+    
+    from webscraping_f.subastas.data_base import get_url_login, get_user_login, get_pass_login, get_url_s
+    from utils.data_base import log_to_db_f
+    from utils.mail import send_mail
 except Exception as e:
     print("Ocurrió un error al importar las librerías en subastas main", e)
+
+download_dir = os.path.expanduser(r"E:\API_2\WebScraping-API\webscraping_f\subastas")
 
 def create_driver_connection():
     # Inicializar el navegador
     chrome_options = Options()
-    chrome_options.binary_location = "/usr/bin/google-chrome"
+    chrome_options.binary_location = "C:/Program Files/Google/Chrome/Application/chrome.exe"
+    chrome_options.add_argument("--headless") # No visualizar el navegador
 
-    # Establecer la carpeta de descargas
+    #download_path = tempfile.mkdtemp()
+    download_path = r"E:\API_2\WebScraping-API\webscraping_f\subastas"
+    
+    # Crear el directorio si no existe
+    if not os.path.exists(download_path):
+        os.makedirs(download_path)
+    
     prefs = {
-        "download.default_directory": os.path.expanduser('~/Escritorio/Starflowers/API/API-WebScraping/subastas'),
+        "download.default_directory": os.path.expanduser(download_path),
         "download.prompt_for_download": False,  # No preguntar al usuario
         "download.directory_upgrade": True,    # Permitir actualizaciones del directorio de descargas
-        "safebrowsing.enabled": True           # Permitir descargas seguras
+        "safebrowsing.enabled": True,           # Permitir descargas seguras
+        "profile.default_content_settings.popups": 0  # Desactiva los popups de descarga
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
@@ -40,12 +51,12 @@ def login(driver):
     while retries < max_retries:
         try:
 
-            driver.get(data_base.get_url_login())
+            driver.get(get_url_login())
             # Iniciar sesión
             username = driver.find_element(By.ID, 'username')
-            username.send_keys(data_base.get_url_login())
+            username.send_keys(get_user_login())
             password = driver.find_element(By.ID, 'password')
-            password.send_keys(data_base.get_pass_mail())
+            password.send_keys(get_pass_login())
 
             message = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.fps-button'))).click()
             print(message)
@@ -56,8 +67,8 @@ def login(driver):
             print("Ocurrio un error al iniciar sesion, ", e)
             time.sleep(3)
             if retries == max_retries:
-                util_data_base.log_to_db(2, "ERROR", f"Ocurrio un error al iniciar sesión, {e}", endpoint='fallido', status_code=500)
-                send_email.send_mail(f"Ocurrio un error al inciar sesión, {e}")
+                log_to_db_f(2, "ERROR", f"Ocurrio un error al iniciar sesión, {e}", endpoint='login', status_code=500)
+                # send_mail(f"Ocurrio un error al inciar sesión, {e}")
                 raise
         finally:
             if retries == max_retries:
@@ -65,7 +76,7 @@ def login(driver):
 
 def delete_file():
     # Ruta del archivo que deseas eliminar
-    file_path = "~/Escritorio/Starflowers/API/API-WebScraping/subastas/FloridayIoYieldExcel.xls"
+    file_path = r"E:\API_2\WebScraping-API\webscraping_f\subastas\FloridayIoYieldExcel.xls"
 
     try:
         # Verifica si el archivo existe
@@ -87,7 +98,7 @@ def wait_table(driver):
         print("Error al cargar la tabla:", e)
         driver.quit()
 
-def wait_for_download(download_dir, timeout=30):
+def wait_for_download(download_dir, timeout=50):
     end_time = time.time() + timeout
     while time.time() < end_time:
         files = os.listdir(download_dir)
@@ -103,7 +114,7 @@ def process_downloaded_file(download_dir):
         raise Exception("No se encontró ningún archivo descargado")
     
     file_path = os.path.join(download_dir, files[0])
-    time.sleep(5)
+    time.sleep(10)
     # Validar manualmente el archivo descargado
     try:
         print(f"Procesando archivo: {file_path}")
@@ -137,10 +148,8 @@ def process_downloaded_file(download_dir):
     except Exception as e:
         print(f"Error al procesar el archivo Excel: {e}")
 
-download_dir = os.path.expanduser('~/Escritorio/Starflowers/API/API-WebScraping/subastas')
-
 def generate_url_base(start, end):
-    base_url = data_base.get_url_y()
+    base_url = get_url_s()
     print(f"URL_BASE: ", base_url)
     if not base_url:
         raise ValueError("La base URL obtenida de la base de datos es inválida.")
@@ -172,7 +181,7 @@ def get_file():
     time.sleep(10)
 
     try:
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, 'export'))
         ).click()
         time.sleep(10)
@@ -194,7 +203,6 @@ def get_file():
     try:
         driver.close()
         driver.quit()
-        data_base.cursor.close()
         print("Conexiones cerradas")
     except Exception as e:
         print(f"ERROR al cerrar las conexiones, {e}")

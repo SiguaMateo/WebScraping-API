@@ -1,27 +1,20 @@
 try:
-    import data_base
-    import utils.data_base as util_data_base
-    import utils.mail as mail
+    from webscraping_u.customers.data_base import get_delete_query, get_insert_query
+    from utils.data_base import data_base_conn_u, log_to_db_u
+    from utils.mail import send_mail
     import csv
 except Exception as e:
     print(f"Error al importar librerías: {e}")
 
+cursor = data_base_conn_u()
+
 def delete_old_records():
     try:
-        util_data_base.data_base_conn().execute(data_base.get_delete_query())
-        util_data_base.data_base_conn().commit()
+        cursor.execute(get_delete_query())
+        cursor.commit()
         print("La eliminación se completó.")
     except Exception as e:
         print(f"Error al eliminar los registros anteriores: {e}")
-
-def is_valid_row(row):
-    # Ignorar filas con muchos guiones
-    if row.count('-') > 8:
-        return False
-    # Asegurarse de que la longitud de la fila sea exactamente 19
-    if len(row) != 19:
-        return False
-    return True
 
 def clean_credit_limit(credit_limit_str):
     """
@@ -30,7 +23,7 @@ def clean_credit_limit(credit_limit_str):
     """
     try:
         # Reemplazar caracteres innecesarios y convertir a float
-        clean_str = credit_limit_str.replace(',', '').replace(' ', '')
+        clean_str = credit_limit_str.replace(' ', '')
         return float(clean_str)
     except ValueError:
         print(f"Error al convertir el límite de crédito: '{credit_limit_str}'")
@@ -41,13 +34,9 @@ def save():
     try:
         with open("unosof_data_cst.csv", mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
+            next(reader)
             
             for row in reader:
-
-                # Validar y limpiar la fila
-                if not is_valid_row(row):
-                    print(f"Fila inválida descartada: {row}")
-                    continue
 
                 # Limpiar y convertir el campo 4 (límite de crédito) a float
                 row[3] = clean_credit_limit(row[3])
@@ -59,21 +48,18 @@ def save():
 
                 cleaned_row = [val if val != '-' else None for val in row]
 
-                # Ajustar la fila si tiene menos columnas
-                while len(cleaned_row) < 19:
-                    cleaned_row.append(None)
-
                 # Guardar en la base de datos
                 try:
-                    util_data_base.data_base_conn().execute(data_base.get_insert_query(), cleaned_row)
+                    print("Fila insertada:, ", cleaned_row)
+                    cursor.execute(get_insert_query(), cleaned_row)
                     
                 except Exception as db_error:
                     print(f"Error al insertar la fila: {cleaned_row}, {db_error}")
 
-            util_data_base.data_base_conn().commit()
+            cursor.commit()
 
     except Exception as e:
         message = f"Ocurrió un error al guardar los datos en la base de datos: {e}"
         print(message)
-        util_data_base.log_to_db("ERROR", message, endpoint='fallido', status_code=404)
-        mail.send_mail(message)
+        log_to_db_u(2, "ERROR", message, endpoint='save', status_code=404)
+        # send_mail(message)

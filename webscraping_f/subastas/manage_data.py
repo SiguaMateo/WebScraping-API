@@ -1,22 +1,41 @@
 try:
-    from datetime import datetime
     import pandas as pd
-    import utils.data_base as util_data_base
-    import data_base
     import xlrd
     from os import devnull
-    print("Librerías importadas")
+    from datetime import datetime, time, timedelta
+    
+    from utils.data_base import data_base_conn_f, log_to_db_f
+    from utils.mail import send_mail
+    from webscraping_f.subastas.data_base import get_insert_query, get_delete_query
 except Exception as e:
     print("Ocurrió un error al importar las librerías: ", e)
 
+cursor = data_base_conn_f()
+
 def delete_old_records():
-    return None
+    try:
+        # Obtener la fecha límite (hoy - 15 días)
+        fecha_limite = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
+
+        # Obtener la consulta
+        query = get_delete_query()
+
+        # Ejecutar la consulta con el parámetro
+        cursor.execute(query, (fecha_limite,))
+        print(f"Registros eliminados en Ventas hasta la fecha: {fecha_limite}")
+
+        # Confirmar cambios a través de la conexión
+        cursor.commit()  # Asegúrate de usar la conexión, no el cursor.
+        print("Eliminación completada exitosamente.")
+    except Exception as e:
+        print(f"Ocurrió un error durante la eliminación de registros: {e}")
+        log_to_db_f(2, "ERROR", f"Ocurrio un error al eliminar los registros de 15 días, {e}", endpoint='delete_old_records', status_code=500)
+        # send_mail(f"Ocurrio un error al eliminar los registros de 15 días, {e}")
 
 def save():
     delete_old_records()
     # Ruta al archivo Excel
-    input_file = "~/Escritorio/Starflowers/API/API-WebScraping/subastas/FloridayIoYieldExcel.xls"
-    cursor = util_data_base.data_base_conn()
+    input_file = r"E:\API_2\WebScraping-API\webscraping_f\subastas\FloridayIoYieldExcel.xls"
     try:
         # Abrir el archivo Excel usando xlrd para evitar errores de corrupción
         wb = xlrd.open_workbook(input_file, logfile=open(devnull, 'w'), ignore_workbook_corruption=True)
@@ -40,13 +59,18 @@ def save():
             return str(valor).strip()
 
         def clean_date(valor):
-            """ Limpia y convierte una fecha. Retorna None si la fecha es inválida o vacía. """
+            """Limpia y convierte una fecha al formato '%Y-%m-%d'. Retorna None si la fecha es inválida o vacía."""
             if pd.isna(valor) or str(valor).strip() == "":
                 return None
             try:
-                return pd.to_datetime(valor).date()
+                # Indicar el formato explícito según los datos de entrada (modificar si es necesario)
+                return pd.to_datetime(valor, format='%d-%m-%Y').strftime('%Y-%m-%d')
             except ValueError:
-                return None
+                try:
+                    # Si falla, intenta con el formato alternativo
+                    return pd.to_datetime(valor, format='%Y-%m-%d').strftime('%Y-%m-%d')
+                except ValueError:
+                    return None
 
         # Iterar sobre las filas del DataFrame
         for index, row in df.iterrows():
@@ -80,7 +104,7 @@ def save():
                 ]
 
                 # Insertar en la base de datos
-                cursor.execute(data_base.get_insert_query(), tuple(data))
+                cursor.execute(get_insert_query(), tuple(data))
                 print("Fila insertada:", data)
 
             except Exception as fila_error:
@@ -91,8 +115,3 @@ def save():
 
     except Exception as e:
         print(f"Ocurrió un error general: {e}")
-    finally:
-        cursor.close()
-        print("Conexión cerrada.")
-
-save()

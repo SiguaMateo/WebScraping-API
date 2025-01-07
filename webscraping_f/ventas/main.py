@@ -1,43 +1,41 @@
-try:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.chrome.options import Options
-    from webdriver_manager.chrome import ChromeDriverManager
-    from bs4 import BeautifulSoup
-    import pandas as pd
-    import data_base
-    import utils.data_base as util_data_base
-    import utils.mail as mail
-    from datetime import datetime, time, timedelta
-    import time
-    print("Librerias Importadas")
-except Exception as e:
-    print("Error al importar las librerias en ventas, ", e)
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from bs4 import BeautifulSoup
+from datetime import datetime, time, timedelta
+import pandas as pd
+import time
+from webscraping_f.ventas.data_base import get_url_login, get_user_login, get_pass_login, get_url_v
+from utils.data_base import log_to_db_f
+from utils.mail import send_mail
+print("Librerias Importadas")
 
 def create_driver_connection():
     options = Options()
-    brave_path = "C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe"
-    options.add_argument("--headless") # visualizar el navegador
-    options.binary_location = brave_path
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # Si deseas usar Chrome en lugar de Brave, ajusta la ruta de binary_location
+    options.binary_location = "C:/Program Files/Google/Chrome/Application/chrome.exe"
+    options.add_argument("--headless") # No visualizar el navegador
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)  # No especificar la versión
     return driver
+
 
 def login(driver):
     max_retries = 5
     retries = 0
     while retries < max_retries:
         try:
-            driver.get(data_base.get_url_login())
+            driver.get(get_url_login())
 
             print("Iniciando sesion")
             # Iniciar sesión
             username = driver.find_element(By.ID, 'username')
-            username.send_keys(data_base.get_User())
+            username.send_keys(get_user_login())
             password = driver.find_element(By.ID, 'password')
-            password.send_keys(data_base.get_Pass())
+            password.send_keys(get_pass_login())
 
             message = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.fps-button'))).click()
             print(message)
@@ -53,8 +51,8 @@ def login(driver):
                 time.sleep(10)
             
             elif retries == max_retries:
-                util_data_base.log_to_db(2, "ERROR", f"Ocurrio un error al iniciar sesión, {e}", endpoint='fallido', status_code=500)
-                mail.send_mail(f"Ocurrio un error al inciar sesión, {e}")
+                log_to_db_f(1, "ERROR", f"Ocurrio un error al iniciar sesión, {e}", endpoint='login', status_code=500)
+                # send_mail(f"Ocurrio un error al inciar sesión, {e}")
                 raise
         finally:
             if retries == max_retries:
@@ -73,7 +71,7 @@ def clean_value(value):
         return None
 
 def generate_url_base(start, end):
-    base_url = data_base.get_url_v()
+    base_url = get_url_v()
     print(f"URL_BASE: ", base_url)
     if not base_url:
         raise ValueError("La base URL obtenida de la base de datos es inválida.")
@@ -140,7 +138,6 @@ def scrape_table():
 
             csv_filename = "ventas.csv"
             df.to_csv(csv_filename, index=False)
-            # print(f"Datos guardados como '{csv_filename}'")
 
             break
 
@@ -149,10 +146,17 @@ def scrape_table():
             time.sleep(15)
             print("Ocurrio un error al encontrar y extraer los datos de la tabla, ", e)
             if retries == max_retries:
-                util_data_base.log_to_db(1, "ERROR", f"Ocurrio un error al extraer los datos de la página web, {e}", endpoint='fallido', status_code=500)
-                mail.send_mail(f"Ocurrio un error al extraer los datos de la página web, {e}")
+                log_to_db_f(1, "ERROR", f"Ocurrio un error al extraer los datos de la página web, {e}", endpoint='scrape_table', status_code=500)
+                # send_mail(f"Ocurrio un error al extraer los datos de la página web, {e}")
                 raise
         finally:
             if retries == max_retries:
                 driver.quit()
                 driver.close()
+        
+        try:
+            driver.close()
+            driver.quit()
+            print("Conexiones cerradas")
+        except Exception as e:
+            print(f"ERROR al cerrar las conexiones, {e}")

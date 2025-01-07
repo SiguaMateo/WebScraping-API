@@ -1,21 +1,21 @@
 try:
     import csv
-    import data_base
-    import utils.data_base as util_data_base
-    import utils.mail as mail
     from datetime import datetime, timedelta
+    
+    from utils.data_base import data_base_conn_u, log_to_db_u
+    from utils.mail import send_mail
+    from webscraping_u.dae.data_base import get_delete_query, get_insert_query
 except Exception as e:
     print(f"Ocurrio un error al importar las liberias en manage data, {e}")
 
-delete_query = """DELETE FROM dbo.rptDAE_Developer
-            WHERE dae_fecha_creacion_PO > ?"""
+cursor = data_base_conn_u()
 
 def delete_old_records():
     today = datetime.now()
-    date_calculate = (today - timedelta(days=15)).date()
+    date_calculate = (today - timedelta(days=15)).strftime('%Y-%m-%d')
     try:
-        util_data_base.data_base_conn().execute(delete_query, date_calculate)
-        util_data_base.data_base_conn().commit()
+        cursor.execute(get_delete_query(), str(date_calculate))
+        cursor.commit()
         print("La eliminacion se completo ... ")
     except Exception as e:
         print(f"Error al eliminar los registros anteriores, {e}")
@@ -23,23 +23,40 @@ def delete_old_records():
 def save():
     delete_old_records()
     try:
-        with open("unosof_data.csv", mode='r', encoding='utf-8') as file:
+        with open("unosof_data_dae.csv", mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
-
-            # Ignorar el encabezado
-            next(reader, None)
+            next(reader)  # Saltar la cabecera
 
             for row in reader:
-                print("Ingreso al bucle")
-                print(f"Fila leida: {row}")
+                print(f"Fila leída: {row}")
 
-                util_data_base.data_base_conn().execute(data_base.get_insert_query(), row)
-                print(f"Datos guardados correctamente")
+                # Limpiar las celdas
+                row = [cell.replace('\n', ' ').strip() for cell in row]
 
-        util_data_base.data_base_conn().commit()        
+                # Unir direcciones fragmentadas si es necesario
+                if len(row[12].split()) > 2:  # Verificar si es una dirección fragmentada
+                    row[12] = " ".join(row[12].split())
+
+                # Procesar la fecha (columna 14)
+                try:
+                    dateTimeObj = datetime.strptime(row[14], '%b-%d-%Y')
+                    row[14] = dateTimeObj
+                except ValueError as e:
+                    print(f"Error al convertir la fecha en la columna 14: {e}. Valor: {row[14]}")
+                    row[14] = None
+
+                # Guardar en la base de datos
+                try:
+                    cursor.execute(get_insert_query(), row)
+                except Exception as db_error:
+                    print(f"Error al insertar la fila en la base de datos: {db_error}")
+                    continue  # Saltar a la siguiente fila
+
+            print("Datos guardados correctamente")
+            cursor.commit()
 
     except Exception as e:
-        message = f"Ocurrio un error al guardar los datos en la base de datos, {e}"
+        message = f"Ocurrió un error al guardar los datos en la base de datos: {e}"
         print(message)
-        util_data_base.log_to_db(1, "ERROR", message, endpoint='fallido', status_code=404)
-        mail.send_mail(message)
+        log_to_db_u(3, "ERROR", message, endpoint='save', status_code=404)
+        # send_mail(message)
